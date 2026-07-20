@@ -1,0 +1,319 @@
+# Python SVN增量打包工具 - AI开发提示词
+
+## 项目概述
+这是一个将原有 Java Swing 应用改写为 Python 的 SVN 增量打包工具。需要使用 Python 实现相同的功能。
+
+## 技术栈要求
+
+### GUI 框架
+- **PyQt6** 或 **tkinter**（推荐 PyQt6，功能更强大）
+  - 如果选择 PyQt6：`pip install PyQt6`
+  - 如果选择 tkinter：Python 内置，无需额外安装
+
+### 核心依赖
+```yaml
+GUI: PyQt6 (推荐) 或 tkinter
+SVN: pysvn 或调用命令行 svn 客户端
+JSON: 内置 json 模块
+ZIP: 内置 zipfile 模块
+Maven: 调用命令行 mvn
+```
+
+**推荐方案：使用命令行调用方式（跨平台兼容性更好）**
+- SVN 操作：调用 `svn` 命令行工具
+- Maven 构建：调用 `mvn` 命令行工具
+
+## 项目结构（Python 版）
+
+```
+src/
+├── main.py                      # 应用入口
+├── model/                       # 数据模型
+│   ├── svn_project.py           # SVN 项目配置
+│   └── commit_record.py         # SVN 提交记录
+├── service/                     # 业务逻辑层
+│   ├── config_manager.py        # 配置管理（JSON）
+│   ├── svn_service.py           # SVN 操作（命令行调用）
+│   └── packager_service.py      # 打包服务
+├── ui/                          # 用户界面层
+│   ├── main_window.py           # 主窗口
+│   ├── project_panel.py         # 项目配置面板
+│   ├── log_panel.py             # SVN 日志面板
+│   ├── packager_panel.py        # 增量打包面板
+│   └── date_picker.py           # 日期选择器
+└── utils/                       # 工具类
+    └── file_utils.py            # 文件操作工具
+```
+
+## 核心功能实现要点
+
+### 1. SVN 服务 (`service/svn_service.py`)
+
+使用命令行调用方式（无需额外依赖）：
+
+```python
+import subprocess
+import json
+from datetime import datetime
+
+class SvnService:
+    def get_log(self, url, username, password, svn_path, start_date, end_date):
+        """获取 SVN 提交日志"""
+        # 使用 subprocess 调用 svn log 命令
+        # svn log --xml --username ... --password ... --start-date ... --end-date ...
+        pass
+
+    def get_changed_files(self, url, username, password, revision):
+        """获取指定版本的变更文件列表"""
+        # svn log --xml -r <revision> --verbose
+        pass
+
+    def test_connection(self, url, username, password):
+        """测试 SVN 连接"""
+        # svn info <url>
+        pass
+```
+
+### 2. 配置管理 (`service/config_manager.py`)
+
+```python
+import json
+import os
+from pathlib import Path
+
+class ConfigManager:
+    CONFIG_DIR = Path.home() / ".svn-packager"  # Linux/Mac
+    # Windows: Path(os.environ.get("APPDATA")) / "SVNPackager" / "config"
+
+    def __init__(self):
+        self.projects = []
+        self.load_config()
+
+    def load_config(self):
+        # 从 JSON 文件加载项目列表
+        pass
+
+    def save_config(self):
+        # 保存项目列表到 JSON
+        pass
+
+    def add_project(self, project):
+        # 添加项目
+        pass
+
+    def update_project(self, project):
+        # 更新项目
+        pass
+
+    def remove_project(self, project_id):
+        # 删除项目
+        pass
+```
+
+### 3. 打包服务 (`service/packager_service.py`)
+
+```python
+import subprocess
+import zipfile
+from pathlib import Path
+from datetime import datetime
+
+class PackagerService:
+
+    def build_project(self, project_path, callback):
+        """Maven 编译项目"""
+        # subprocess.run(["mvn", "clean", "package", "-DskipTests", "-f", project_path])
+        pass
+
+    def package_incremental(self, project_path, output_dir, app_name,
+                           from_revision, changed_files, callback):
+        """增量打包"""
+        # 1. 查找 WAR 解压目录
+        # 2. 根据变更路径映射到 WAR 文件
+        # 3. 只打包变更的文件到 ZIP
+        pass
+
+    def map_source_path_to_war_output(self, svn_path, project_root, war_dir):
+        """路径映射逻辑"""
+        # trunk/branches/tags 前缀剥离
+        # src/main/java -> WEB-INF/classes
+        # src/main/resources -> WEB-INF/classes
+        # src/main/webapp -> WAR 根目录
+        pass
+```
+
+### 4. 路径映射规则
+
+**SVN 路径 → WAR 输出路径：**
+
+| SVN 路径模式 | WAR 输出路径 | 说明 |
+|-------------|------------|------|
+| `trunk/src/main/java/**/*.java` | `WEB-INF/classes/**/*.class` | Java 文件编译为 class |
+| `branches/*/src/main/java/**/*.java` | `WEB-INF/classes/**/*.class` | 分支 Java 文件 |
+| `tags/*/src/main/java/**/*.java` | `WEB-INF/classes/**/*.class` | 标签 Java 文件 |
+| `trunk/src/main/resources/**` | `WEB-INF/classes/**` | 资源文件 |
+| `trunk/src/main/webapp/**` | `{war_root}/**` | Web 资源 |
+| `WebRoot/**` | `{war_root}/**` | 备用 Web 目录 |
+
+**排除文件列表（增量打包时跳过）：**
+- `license.xml`, `web.xml`, `config.properties`
+- `db.properties`, `email.properties`, `logback.xml`
+- `redis.properties`, `wechat-config.properties`, `whitelist.xml`, `sn.txt`
+
+### 5. UI 布局要求
+
+**主窗口结构：**
+- 左侧：项目列表（`QListWidget` 或 `Listbox`）+ 按钮（新增/编辑/删除/刷新）
+- 右侧：CardLayout（三个面板切换）
+  - ProjectPanel：表单布局（项目配置）
+  - LogPanel：日期选择器 + 搜索框 + 表格（提交日志）
+  - PackagerPanel：文件列表 + 日志区域 + 进度条
+
+**日期选择器：**
+- 自定义日期选择组件
+- 支持开始/结束日期选择
+- 选择后自动调整结束日期 >= 开始日期
+
+**日志表格：**
+- 列：版本号、作者、日期、提交说明
+- 支持多选
+- 双击或回车触发打包
+- 支持按作者/说明搜索（正则表达式）
+
+## 重要注意事项
+
+### 1. 跨平台路径处理
+```python
+from pathlib import Path
+import os
+
+# 正确：使用 Path 对象
+config_dir = Path.home() / ".svn-packager"
+
+# Windows 特殊处理
+if os.name == 'nt':
+    appdata = os.environ.get("APPDATA")
+    config_dir = Path(appdata) / "SVNPackager" / "config"
+```
+
+### 2. 进程调用（避免阻塞 UI）
+```python
+# 使用线程执行耗时操作
+import threading
+
+def fetch_logs_thread():
+    # 耗时的 SVN 操作
+    pass
+
+thread = threading.Thread(target=fetch_logs_thread)
+thread.start()
+```
+
+### 3. 日期处理
+```python
+from datetime import datetime, timedelta
+
+# 开始日期：00:00:00.000
+start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+
+# 结束日期：23:59:59.999
+end_date = date.replace(hour=23, minute=59, second=59, microsecond=999000)
+```
+
+### 4. ZIP 打包
+```python
+with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for file_path in files_to_package:
+        arcname = war_dir.relative_path(file_path)
+        zf.write(file_path, arcname)
+```
+
+### 5. 配置文件位置
+- **Windows**: `%APPDATA%\SVNPackager\config\config.json`
+- **Linux/Mac**: `~/.svn-packager/config.json`
+
+## 兼容性考虑
+
+### 1. Maven 路径
+- 确保系统 PATH 包含 Maven
+- 或使用完整路径：`C:\apache-maven-3.x\bin\mvn.cmd`
+
+### 2. SVN 客户端
+- 需要安装 SVN 命令行工具
+- 或使用 `pysvn` 库（需编译安装）
+
+### 3. Java 运行环境
+- 打包后的应用可能需要 JRE（如果包含 Java 编译产物）
+
+## 开发流程建议
+
+1. **第一阶段**：搭建基础架构（模型 + 配置管理）
+2. **第二阶段**：实现 SVN 服务（日志获取）
+3. **第三阶段**：实现 UI 基础框架（窗口 + 面板）
+4. **第四阶段**：实现日志面板（日期选择 + 表格）
+5. **第五阶段**：实现打包服务（路径映射 + ZIP）
+6. **第六阶段**：实现打包面板（进度显示）
+7. **第七阶段**：测试和优化
+
+## 示例代码片段
+
+### 入口文件 (`main.py`)
+```python
+import sys
+from PyQt6.QtWidgets import QApplication
+from ui.main_window import MainWindow
+
+def main():
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
+
+if __name__ == '__main__':
+    main()
+```
+
+### 模型类 (`model/svn_project.py`)
+```python
+import uuid
+from datetime import datetime
+
+class SvnProject:
+    def __init__(self, name=None, svn_url=None, local_path=None):
+        self.id = str(uuid.uuid4())
+        self.created_time = datetime.now().timestamp()
+        self.name = name
+        self.svn_url = svn_url
+        self.svn_path = ""
+        self.local_path = local_path
+        self.username = ""
+        self.password = ""
+        self.last_packed_revision = ""
+        self.output_dir = ""
+
+    def to_dict(self):
+        return self.__dict__
+
+    @classmethod
+    def from_dict(cls, data):
+        project = cls()
+        project.__dict__.update(data)
+        return project
+```
+
+## 测试验证
+
+### 手动测试清单
+- [ ] 新增项目配置并保存
+- [ ] 测试 SVN 连接
+- [ ] 获取指定日期范围的日志
+- [ ] 搜索过滤日志
+- [ ] 选择多条提交记录
+- [ ] 执行增量打包
+- [ ] 验证 ZIP 文件内容
+
+### 验证打包内容
+- 检查 WAR 解压目录是否正确查找
+- 验证路径映射是否正确
+- 确认排除文件未被包含
+- 检查 ZIP 文件结构
