@@ -3,6 +3,7 @@ package com.svnpackager.ui;
 import com.svnpackager.model.CommitRecord;
 import com.svnpackager.model.SvnProject;
 import com.svnpackager.service.PackagerService;
+import com.svnpackager.service.SvnService;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -82,8 +83,20 @@ public class PackagerPanel extends JPanel {
         fileListModel = new DefaultListModel<>();
         fileList = new JList<>(fileListModel);
         fileList.setFont(new Font("Consolas", Font.PLAIN, 12));
+        fileList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    int index = fileList.locationToIndex(e.getPoint());
+                    if (index >= 0) {
+                        String svnPath = fileListModel.getElementAt(index);
+                        openFilePreview(svnPath);
+                    }
+                }
+            }
+        });
         JScrollPane fileScrollPane = new JScrollPane(fileList);
-        fileScrollPane.setBorder(BorderFactory.createTitledBorder("变更文件列表"));
+        fileScrollPane.setBorder(BorderFactory.createTitledBorder("变更文件列表（双击预览）"));
         filePanel.add(fileScrollPane, BorderLayout.CENTER);
 
         splitPane.setLeftComponent(filePanel);
@@ -286,5 +299,94 @@ public class PackagerPanel extends JPanel {
             lblStatus.setText("就绪");
             lblStatus.setForeground(Color.GRAY);
         }
+    }
+
+    private void openFilePreview(String svnPath) {
+        if (currentProject == null || currentProject.getSvnUrl() == null) {
+            JOptionPane.showMessageDialog(this, "请先选择项目", "提示", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        FileRevisionRange range = findRevisionRangeForFile(svnPath);
+        if (range == null) {
+            JOptionPane.showMessageDialog(this, "未找到该文件的提交版本", "提示", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        final String targetPath = svnPath.startsWith("/") ? svnPath : "/" + svnPath;
+        final long minRev = range.minRevision;
+        final long maxRev = range.maxRevision;
+
+        lblStatus.setText("正在获取变更内容...");
+        lblStatus.setForeground(Color.BLUE);
+
+        new Thread(() -> {
+            try {
+                SvnService svnService = new SvnService();
+                String afterContent = svnService.getFileContent(
+                        currentProject.getSvnUrl(),
+                        currentProject.getUsername(),
+                        currentProject.getPassword(),
+                        targetPath,
+                        maxRev);
+
+                String beforeContent = svnService.getFileContent(
+                        currentProject.getSvnUrl(),
+                        currentProject.getUsername(),
+                        currentProject.getPassword(),
+                        targetPath,
+                        minRev - 1);
+
+                SwingUtilities.invokeLater(() -> {
+                    String title = "变更预览 - " + svnPath + " (Rev " + minRev + " → " + maxRev + ")";
+                    DiffPreviewDialog dialog = new DiffPreviewDialog(
+                            SwingUtilities.getWindowAncestor(this), title, beforeContent, afterContent, minRev, maxRev);
+                    dialog.setVisible(true);
+                    lblStatus.setText("就绪");
+                    lblStatus.setForeground(Color.GRAY);
+                });
+            } catch (Exception e) {
+                SwingUtilities.invokeLater(() -> {
+                    JOptionPane.showMessageDialog(this, "获取变更内容失败:\n" + e.getMessage(),
+                            "错误", JOptionPane.ERROR_MESSAGE);
+                    lblStatus.setText("就绪");
+                    lblStatus.setForeground(Color.GRAY);
+                });
+            }
+        }).start();
+    }
+
+    private static class FileRevisionRange {
+        final long minRevision;
+        final long maxRevision;
+
+        FileRevisionRange(long minRevision, long maxRevision) {
+            this.minRevision = minRevision;
+            this.maxRevision = maxRevision;
+        }
+    }
+
+    private FileRevisionRange findRevisionRangeForFile(String svnPath) {
+        String normalizedPath = svnPath.startsWith("/") ? svnPath : "/" + svnPath;
+        long minRev = Long.MAX_VALUE;
+        long maxRev = Long.MIN_VALUE;
+
+        for (CommitRecord record : selectedRecords) {
+            for (String changedPath : record.getChangedPaths()) {
+                String normalizedChangedPath = changedPath.startsWith("/") ? changedPath : "/" + changedPath;
+                boolean match = normalizedChangedPath.equals(normalizedPath)
+                        || normalizedChangedPath.endsWith(normalizedPath)
+                        || normalizedPath.endsWith(normalizedChangedPath);
+                if (match) {
+                    if (record.getRevision() < minRev) minRev = record.getRevision();
+                    if (record.getRevision() > maxRev) maxRev = record.getRevision();
+                }
+            }
+        }
+
+        if (minRev == Long.MAX_VALUE) {
+            return null;
+        }
+        return new FileRevisionRange(minRev, maxRev);
     }
 }

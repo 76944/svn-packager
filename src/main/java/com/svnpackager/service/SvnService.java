@@ -10,7 +10,10 @@ import org.tmatesoft.svn.core.wc.SVNWCUtil;
 import org.tmatesoft.svn.core.wc.SVNUpdateClient;
 import org.tmatesoft.svn.core.wc.SVNRevision;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 public class SvnService {
@@ -154,6 +157,44 @@ public class SvnService {
             if (repository != null) {
                 repository.closeSession();
             }
+        }
+    }
+
+    public String getFileContent(String url, String username, String password, String filePath, long revision) throws SVNException {
+        SVNRepository repository = createRepository(url, username, password);
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            try {
+                repository.getFile(filePath, revision, null, baos);
+            } catch (SVNException e) {
+                if (e.getErrorMessage() != null && e.getErrorMessage().getErrorCode() == SVNErrorCode.FS_NOT_FOUND) {
+                    return null;
+                }
+                throw e;
+            }
+            byte[] bytes = baos.toByteArray();
+            return detectAndConvertEncoding(bytes);
+        } catch (Exception e) {
+            throw new SVNException(SVNErrorMessage.create(SVNErrorCode.IO_ERROR, "获取文件内容失败: " + e.getMessage()));
+        } finally {
+            repository.closeSession();
+        }
+    }
+
+    private String detectAndConvertEncoding(byte[] bytes) {
+        if (bytes.length >= 3 && bytes[0] == (byte) 0xEF && bytes[1] == (byte) 0xBB && bytes[2] == (byte) 0xBF) {
+            return new String(bytes, 3, bytes.length - 3, StandardCharsets.UTF_8);
+        }
+        if (bytes.length >= 2 && bytes[0] == (byte) 0xFF && bytes[1] == (byte) 0xFE) {
+            return new String(bytes, 2, bytes.length - 2, StandardCharsets.UTF_16LE);
+        }
+        if (bytes.length >= 2 && bytes[0] == (byte) 0xFE && bytes[1] == (byte) 0xFF) {
+            return new String(bytes, 2, bytes.length - 2, StandardCharsets.UTF_16BE);
+        }
+        try {
+            return new String(bytes, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return new String(bytes, Charset.forName("GBK"));
         }
     }
 
